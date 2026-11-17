@@ -1,0 +1,450 @@
+{
+  "_generated": {
+    "note": "Generated — do not edit by hand. Canonical source = the format anchors of the notation conventions. Regenerate: node .claude/hooks/gen-format-constants.js --write. Freshness = --check byte comparison",
+    "source_anchors": [
+      "pk-definition-table",
+      "enum-column-vocab",
+      "column-kind-definitions",
+      "composite-why-closest",
+      "01-format-position-path-attempt",
+      "01-field-format-table",
+      "date-literal-full-list",
+      "other-files-fk-table",
+      "composite-in-effect",
+      "composite-invalidation",
+      "notation-grammar",
+      "00-file-structure",
+      "00-writing-rules",
+      "candidate-format",
+      "session-file-structure",
+      "do-record-hook-rules",
+      "check-execution",
+      "invariant-table-T1",
+      "invariant-table-T2",
+      "invariant-table-T3",
+      "marker-grammar",
+      "k-file-structure",
+      "01-format-discarded-directions"
+    ]
+  },
+  "alert": {
+    "lessons": 40,
+    "pathNodes": 8,
+    "treeLines": 150
+  },
+  "check": {
+    "all": [
+      "I-01",
+      "I-02",
+      "I-03",
+      "I-04",
+      "I-05",
+      "I-06",
+      "I-07",
+      "I-08",
+      "I-09",
+      "I-10",
+      "I-11",
+      "I-12",
+      "I-13",
+      "I-14",
+      "I-15",
+      "I-16",
+      "I-17",
+      "I-18",
+      "I-19",
+      "I-20",
+      "I-21",
+      "I-22",
+      "I-23"
+    ],
+    "c3": [
+      "I-01",
+      "I-07",
+      "I-08",
+      "I-09"
+    ]
+  },
+  "dest": {
+    "effectiveLabel": "In effect:",
+    "fixedLine": "^(#|>|---$|\\| Date \\||\\|-)",
+    "kinds": [
+      "Quantitative",
+      "Qualitative"
+    ],
+    "template": [
+      "# Destination",
+      "",
+      "> This file is written and edited by `/pdca-init`. It is not edited by hand. Destination writing rules → grep -F \"anchor:00-writing-rules\" (NOTATION_CONVENTIONS)",
+      "> When the destination wavers, the whole exploration wavers.",
+      "> ⚠️ **No compression**: success criteria (D#) rows are not deleted. For a discarded criterion, only its `In effect`",
+      ">   is changed to `Discarded` and the row stays (the invalidation pattern). Deleting it makes a D# cited by a past ◎ Best Record",
+      ">   vanish, and the basis of the closeness judgment is lost.",
+      "> This file has no frontmatter.",
+      "",
+      "---",
+      "",
+      "## Final Goal",
+      "{Final goal in one sentence}",
+      "",
+      "---",
+      "",
+      "## Success Criteria",
+      "",
+      "> **D#** = the destination criterion PK. References use only this number (the number is kept even when discarded). D# format → grep -F \"anchor:pk-definition-table\" (NOTATION_CONVENTIONS)",
+      "> `In effect:` is put on the line **directly below** each D#. In-effect value format → grep -F \"anchor:composite-in-effect\" (NOTATION_CONVENTIONS)",
+      "> **Checkbox `[ ]`/`[x]`** = whether that criterion is **met right now**. `/pdca-wrap` turns it on and off, with user approval.",
+      "> The `[x]` of this list and the `Why closest` (D# met) of the ◎ Best Record are **different axes**. No agreement check is done between the two.",
+      "",
+      "### Quantitative criteria (measurable numbers)",
+      "- [ ] **D1** — {quantitative criterion}",
+      "      In effect: Valid",
+      "",
+      "### Qualitative criteria (judgment)",
+      "- [ ] **D2** — {qualitative criterion}",
+      "      In effect: Valid",
+      "",
+      "---",
+      "",
+      "## Constraints (must be kept)",
+      "- {constraint}",
+      "",
+      "---",
+      "",
+      "## Not the Destination (out of scope)",
+      "- {out-of-scope item}",
+      "",
+      "---",
+      "",
+      "## Destination Change History",
+      "",
+      "> Change history `Date` format → grep -F \"anchor:date-literal-full-list\" (NOTATION_CONVENTIONS)",
+      "> Row order and template row → grep -F \"anchor:notation-grammar\" (NOTATION_CONVENTIONS)",
+      "",
+      "| Date | Change | Reason for change |",
+      "|------|-----------|-----------|",
+      "| — | — | — |"
+    ]
+  },
+  "fields": [
+    {
+      "kind": "id",
+      "loc": "frontmatter",
+      "name": "best_attempt",
+      "pk": "Attempt"
+    },
+    {
+      "kind": "id",
+      "loc": "frontmatter",
+      "name": "archived_through",
+      "pk": "ArchiveMonth"
+    },
+    {
+      "kind": "id",
+      "loc": "★ Current Position",
+      "name": "Attempt #",
+      "pk": "Attempt"
+    },
+    {
+      "kind": "id",
+      "loc": "★ Current Position",
+      "name": "Path",
+      "pk": "Attempt"
+    },
+    {
+      "kind": "prose",
+      "loc": "★ Current Position",
+      "name": "Direction",
+      "pk": null
+    },
+    {
+      "kind": "enum",
+      "loc": "★ Current Position",
+      "name": "Status",
+      "pk": null
+    },
+    {
+      "kind": "id",
+      "loc": "★ Current Position",
+      "name": "Body",
+      "pk": "Session"
+    },
+    {
+      "kind": "id",
+      "loc": "◎ Best Record",
+      "name": "Closest attempt",
+      "pk": "Attempt"
+    },
+    {
+      "kind": "composite",
+      "loc": "◎ Best Record",
+      "name": "Why closest",
+      "pk": "DestinationCriterion"
+    },
+    {
+      "kind": "prose",
+      "loc": "◎ Best Record",
+      "name": "What blocked it",
+      "pk": null
+    },
+    {
+      "kind": "id",
+      "loc": "Return Log",
+      "name": "Blocked at",
+      "pk": "Attempt"
+    },
+    {
+      "kind": "id",
+      "loc": "Return Log",
+      "name": "Return point",
+      "pk": "Attempt"
+    },
+    {
+      "kind": "prose",
+      "loc": "Return Log",
+      "name": "Why that point",
+      "pk": null
+    },
+    {
+      "kind": "id",
+      "loc": "Return Log",
+      "name": "Invalidated lessons",
+      "pk": "Lesson"
+    },
+    {
+      "kind": "id",
+      "loc": "Return Log",
+      "name": "Body",
+      "pk": "Session"
+    },
+    {
+      "kind": "id",
+      "loc": "Recent Attempts",
+      "name": "#",
+      "pk": "Attempt"
+    },
+    {
+      "kind": "id",
+      "loc": "Recent Attempts",
+      "name": "Branch point",
+      "pk": "Attempt"
+    },
+    {
+      "kind": "prose",
+      "loc": "Recent Attempts",
+      "name": "Direction",
+      "pk": null
+    },
+    {
+      "kind": "enum",
+      "loc": "Recent Attempts",
+      "name": "Result",
+      "pk": null
+    },
+    {
+      "kind": "id",
+      "loc": "Recent Attempts",
+      "name": "Lesson",
+      "pk": "Lesson"
+    },
+    {
+      "kind": "id",
+      "loc": "Recent Attempts",
+      "name": "Body",
+      "pk": "Session"
+    },
+    {
+      "kind": "prose",
+      "loc": "Next Direction Candidates",
+      "name": "A/B/C",
+      "pk": null
+    },
+    {
+      "kind": "id",
+      "loc": "Next Direction Candidates",
+      "name": "Branch point",
+      "pk": "Attempt"
+    },
+    {
+      "kind": "id",
+      "loc": "Discarded Directions",
+      "name": "#",
+      "pk": null
+    },
+    {
+      "kind": "id",
+      "loc": "Discarded Directions",
+      "name": "Branch point",
+      "pk": "Attempt"
+    },
+    {
+      "kind": "prose",
+      "loc": "Discarded Directions",
+      "name": "Direction",
+      "pk": null
+    },
+    {
+      "kind": "prose",
+      "loc": "Discarded Directions",
+      "name": "Discard reason",
+      "pk": null
+    },
+    {
+      "kind": "id",
+      "loc": "Discarded Directions",
+      "name": "Date",
+      "pk": "Session"
+    },
+    {
+      "kind": "prose",
+      "loc": "Discarded Directions",
+      "name": "Retry condition",
+      "pk": null
+    }
+  ],
+  "hook": {
+    "run": [
+      "Bash",
+      "PowerShell"
+    ],
+    "write": [
+      "Write",
+      "Edit",
+      "MultiEdit",
+      "NotebookEdit"
+    ]
+  },
+  "init": {
+    "date": "YYYY-MM-DD",
+    "path": "sessions/YYYY-MM-DD.md"
+  },
+  "kfile": {
+    "label": {
+      "found": "Discovered",
+      "invalid": "Invalidation",
+      "related": "Related attempts"
+    }
+  },
+  "list": {
+    "proseCols": [
+      "What blocked it",
+      "Why that point",
+      "Discard reason",
+      "Retry condition"
+    ]
+  },
+  "lock": {
+    "sessionLabel": "Session:",
+    "targetLabel": "Invalidation target:"
+  },
+  "path": {
+    "Archive": {
+      "prefix": "archive/tree_",
+      "suffix": ".md"
+    },
+    "Body": {
+      "prefix": "sessions/",
+      "suffix": ".md"
+    },
+    "Lesson": {
+      "prefix": "knowledge/",
+      "suffix": ".md"
+    },
+    "firstNode": "#0",
+    "separator": " → "
+  },
+  "regex": {
+    "candidate": "^- \\*\\*[A-C]\\.\\*\\* .+ — Branch point: #(0|[1-9][0-9]*) — Basis: .+$",
+    "checkItem": [
+      "^- \\[x\\] .+: O — .+$",
+      "^- \\[ \\] .+: X — .+$"
+    ],
+    "dateLiteral": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+    "destItem": "^- \\[( |x)\\] \\*\\*(D[1-9][0-9]*)\\*\\* — (.+)$",
+    "discHeader": "^\\| # \\| Branch point \\| Direction \\| Discard reason \\| Date \\| Retry condition \\|$",
+    "discovered": "^#(0|[1-9][0-9]*) \\([0-9]{4}-[0-9]{2}-[0-9]{2}\\)$",
+    "effective": [
+      "^Valid$",
+      "^Discarded — [0-9]{4}-[0-9]{2}-[0-9]{2}, .+$"
+    ],
+    "id": {
+      "ArchiveMonth": "[0-9]{4}-[0-9]{2}",
+      "Attempt": "#(0|[1-9][0-9]*)",
+      "DestinationCriterion": "D[1-9][0-9]*",
+      "Lesson": "#K[0-9]{3}",
+      "Session": "[0-9]{4}-[0-9]{2}-[0-9]{2}"
+    },
+    "invalidationId": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+    "lockTarget": "^#K[0-9]{3} — .+$",
+    "nearReason": "^(D[1-9][0-9]*(, D[1-9][0-9]*)* met|None met)( / D[1-9][0-9]*(, D[1-9][0-9]*)* unmet)?$",
+    "pauseMemo": [
+      "^#### [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} — Session paused$",
+      "^Did: .+$",
+      "^Remaining: .+$",
+      "^Next first action: .+$"
+    ],
+    "sessionHeader": "^## Round [1-9][0-9]* · Attempt #(0|[1-9][0-9]*)( continued)?$",
+    "sumHeader": "^\\| # \\| Branch point \\| Direction \\| Result \\| Conclusion \\| Lesson \\| Body \\|$"
+  },
+  "session": {
+    "label": {
+      "achieved": "Success criteria met:",
+      "conclusion": "Conclusion:",
+      "criteria": "Success criteria (this cycle):",
+      "discard": "Discard check:",
+      "distance": "Distance to destination:",
+      "goal": "Cycle goal:",
+      "hypothesis": "Hypothesis:",
+      "lessons": "Lessons consulted:",
+      "reason": "Reason:"
+    }
+  },
+  "struct": {
+    "I-01": {
+      "line": 6,
+      "section": 1
+    },
+    "I-02": {
+      "line": 3,
+      "section": 1
+    },
+    "I-03": {
+      "Next Direction Candidates": 3,
+      "Recent Attempts": 3,
+      "Return Log": 3
+    }
+  },
+  "token": {
+    "none": "None",
+    "unfilled": "—"
+  },
+  "vocab": {
+    "Conclusion": [
+      "Continue",
+      "Pivot",
+      "Discarded"
+    ],
+    "Distance to destination": [
+      "Closer",
+      "Same",
+      "Farther"
+    ],
+    "Result": [
+      "Success",
+      "Failure",
+      "Partial"
+    ],
+    "Status": [
+      "To Do",
+      "In Progress",
+      "Blocked",
+      "On Hold",
+      "Done",
+      "Canceled"
+    ],
+    "Validity": [
+      "Valid",
+      "Invalid"
+    ]
+  }
+}

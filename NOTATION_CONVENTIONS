@@ -1,0 +1,859 @@
+# Claude Navigation v2 — Notation Conventions (runtime)
+
+> This file is read only one anchor block at a time. Every rule lives inside an anchor block.
+> How to read a block is set by the "Pointer resolution" block.
+
+---
+
+## ① IDs · Column kinds · Notation
+
+<!-- anchor:pk-definition-table -->
+| Entity | PK format | Regex | Issuing rule | Reuse | Body location |
+|---|---|---|---|---|---|
+| Attempt | `#N` | `#(0\|[1-9][0-9]*)` | Monotonic increase from 0. `#0` = destination set, before the first attempt | **Forbidden** (the number is kept even when discarded) | `sessions/` |
+| Lesson | `#K###` | `#K[0-9]{3}` | Monotonic increase from 001 | **Forbidden** | `knowledge/K###.md` |
+| Destination criterion | `D#` | `D[1-9][0-9]*` | From 1. Quantitative and qualitative share **one sequence** | Forbidden | `00_destination.md` |
+| Session | `YYYY-MM-DD` | `[0-9]{4}-[0-9]{2}-[0-9]{2}` | The file name is the PK. File = the cycles *started* that day (several cycles in one day are `## Round N` inside the file) | — | `sessions/YYYY-MM-DD.md` |
+| Archive month | `YYYY-MM` | `[0-9]{4}-[0-9]{2}` | By the date in the `Body` column of the migrated row | — | `archive/tree_YYYY-MM.md` |
+<!-- anchor-end:pk-definition-table -->
+
+<!-- anchor:column-kind-definitions -->
+| Kind | Allowed values | How it is checked | Example columns |
+|---|---|---|---|
+| **ID column** | **Only** a PK regex match · a derived path · `None` (normal empty value · any location) · `—` (unfilled). `—` passes only in a template row · a template initial value (the ◎ Best Record code block) · a cell where the field format table lists `—` as a valid example; in any other data row it is a violation | Exact regex match | `Lesson`, `Body`, `Closest attempt`, `Invalidated lessons`, `Branch point`, `Path` |
+| **Enum column** | Only the fixed vocabulary below | Set matching | `Result`, `Conclusion`, `Status`, `Validity` |
+| **Prose column** | Free prose (includes no-compression targets) | Only checked for being blank | `Direction`, `Discard reason`, `Why that point`, `What blocked it`, `Retry condition`, `cycle DO summary` |
+| **Composite column** | `{left span} — {prose span}` (`None` or a single token allowed depending on the column) | Checked with the **dedicated regex set for each column** (`Why closest` → grep -F "anchor:composite-why-closest" (NOTATION_CONVENTIONS) · `Invalidation` → grep -F "anchor:composite-invalidation" (NOTATION_CONVENTIONS) · `In effect` → grep -F "anchor:composite-in-effect" (NOTATION_CONVENTIONS)). `None` or a single token passes; otherwise split at the first ` — ` and check each part | `Why closest`, `Invalidation`, `In effect` |
+| **Date literal column** | Only a `YYYY-MM-DD` calendar date (no path derivation · not an FK) | Exact match of `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` | `Started`, `last_updated`, change history `Date` (full list → grep -F "anchor:date-literal-full-list" (NOTATION_CONVENTIONS)) |
+<!-- anchor-end:column-kind-definitions -->
+
+<!-- anchor:enum-column-vocab -->
+**Fixed vocabulary (enum columns)**
+- `Result` : Success / Failure / Partial
+- `Conclusion` : Continue / Pivot / Discarded
+- `Status` : To Do / In Progress / Blocked / On Hold / Done / Canceled ← `01_exploration_tree.md` only. A computed value that a person does not choose. Status determination → grep -F "anchor:status-determination" (NOTATION_CONVENTIONS)
+- `Distance to destination` : Closer / Same / Farther ← session file CHECK only
+- `Validity` : Valid / Invalid ← `02_knowledge_base.md` lesson index only. A **separate column** from `Status`
+- The order of the values in each vocabulary is fixed. `nav.js` reads the values by order. Do not add values or change the order.
+<!-- anchor-end:enum-column-vocab -->
+
+<!-- anchor:composite-why-closest -->
+**Composite column grammar — `Why closest`**
+```
+Why closest:  D1, D2 met / D3 unmet — {prose on why it was close}
+```
+- ID span regex: `^({Destination criterion PK}(, {Destination criterion PK})* met|None met)( / {Destination criterion PK}(, {Destination criterion PK})* unmet)?$` ({Destination criterion PK} → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS))
+- Prose span: must not be blank. It is a **no-compression target**, so it is not summarized or deleted.
+<!-- anchor-end:composite-why-closest -->
+
+<!-- anchor:composite-invalidation -->
+**Composite column grammar — `Invalidation`** (`knowledge/K###.md`)
+```
+Invalidation:    None
+Invalidation:    2026-07-18 — returning to #4 made the fixed-driver premise itself no longer hold
+```
+- There are **only two allowed forms**: `None` or `{Session PK} — {prose}`. `—` (unfilled) is a **violation**
+- ID span regex: `^{Session PK}$` — **one** session PK, the session where the return was recorded ({Session PK} → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS))
+- Prose span: must not be blank. It is a **no-compression target**, so it is not summarized or deleted
+- The return span (`#7`·`#4`) is not written here. Which return it was is joined by the session PK (the `Body` column of the Return Log has the same date)
+- ※ `Invalidated lessons` in `01_exploration_tree.md` is a **different column (an ID column)**.
+  Key matching is done by **exact match** — with partial matching, `Invalidation` would also catch `Invalidated lessons`
+<!-- anchor-end:composite-invalidation -->
+
+<!-- anchor:composite-in-effect -->
+**Composite column grammar — `In effect`** (`00_destination.md`)
+```
+In effect: Valid
+In effect: Discarded — 2026-07-19, this criterion became unnecessary after the higher goal changed
+```
+- There are **only two allowed forms**: `Valid` (a single token) or `Discarded — {Date literal}, {prose}`. `—` (unfilled) is a **violation**
+- Value regex (exact match): `^Valid$` passes / anything else must match `^Discarded — {Date literal}, .+$` to pass ({Date literal} → grep -F "anchor:date-literal-full-list" (NOTATION_CONVENTIONS))
+- The left keyword is only `Valid`/`Discarded`, and this column regex enforces it — **it is not put in the fixed vocabulary list of enum columns**
+  (if it were, I-05 would also treat this column as an enum column and collide with the composite check. The same trap as the `Status`/`Validity` split)
+- `{date}` is a **calendar date literal** `YYYY-MM-DD`. It is neither a session PK nor an FK (audit log)
+- `{prose}` (reason for discarding): must not be blank. It is a **no-compression target**, so it is not summarized or deleted
+- This column sits on a **separate line** from the `D#` row (directly below the D#)
+<!-- anchor-end:composite-in-effect -->
+
+<!-- anchor:01-field-format-table -->
+| Location | Column/field | Kind | PK it points to | Valid example | Violation example |
+|---|---|---|---|---|---|
+| frontmatter | `best_attempt` | ID | Attempt | `4` / `None` | `method 4` |
+| frontmatter | `archived_through` | ID | Month | `2026-06` / `None` | `through 2026-06` |
+| ★ Current Position | `Attempt #:` | ID | Attempt | `#7` | — |
+| ★ Current Position | `Path:` | ID (ordered list) | Attempt (multiple) | `#0 → #4 → #11` | `#0 → #4 ↩ #7`, `#0,#4` |
+| ★ Current Position | `Direction:` | Prose | — | prose allowed | blank |
+| ★ Current Position | `Status:` | Enum | — | `In Progress` | `almost there` |
+| ★ Current Position | `Body:` | ID | Session | `sessions/2026-07-23.md` | `today's session` |
+| ◎ Best Record | `Closest attempt:` | ID | Attempt | `#4` | `#4 (via Blender)` |
+| ◎ Best Record | `Why closest:` | **Composite** | Destination criterion | `D1, D2 met / D3 unmet — texture attached but coordinate system off` | prose only, no ID |
+| ◎ Best Record | `What blocked it:` | Prose | — | prose allowed (**no compression**) | blank |
+| Return Log | `Blocked at` | ID | Attempt | `#7` | `texture broke at #7` |
+| Return Log | `Return point` | ID | Attempt | `#4` | — |
+| Return Log | `Why that point` | Prose | — | prose allowed (**no compression**) | blank |
+| Return Log | `Invalidated lessons` | ID | Lesson (multiple) | `#K002, #K005` / `None` | blank, `—` |
+| Return Log | `Body` | ID | Session | `sessions/2026-07-18.md` | — |
+| Recent Attempts | `#` | ID | Attempt | `#7` | — |
+| Recent Attempts | `Branch point` | ID | Attempt | `#4` / `—` (root only) | blank, `None` |
+| Recent Attempts | `Direction` | Prose | — | prose allowed | blank |
+| Recent Attempts | `Result` / `Conclusion` | Enum | — | `Partial` / `Pivot` | `so-so` |
+| Recent Attempts | `Lesson` | ID | Lesson (multiple) | `#K003` / `None` | `#K003 driver issue` |
+| Recent Attempts | `Body` | ID | Session | `sessions/2026-07-20.md` | — |
+| Next Direction Candidates | `A/B/C` | Prose | — | prose allowed | — |
+| Next Direction Candidates | `Branch point:` | ID | Attempt | `#4` | blank (the value to copy on promotion is lost) |
+| Discarded Directions | `#` | ID | Attempt / `—` | `#9` or `—` | `proposal stage` |
+| Discarded Directions | `Branch point` | ID | Attempt | `#4` (**required** even in a row whose `#` is `—`) | blank, `None` |
+| Discarded Directions | `Direction` | Prose | — | prose allowed | blank |
+| Discarded Directions | `Discard reason` | Prose | — | prose allowed (**no compression**) | blank |
+| Discarded Directions | `Date` | ID | Session | `2026-07-19` | — |
+| Discarded Directions | `Retry condition` | Prose | — | prose allowed (**no compression**) | blank |
+<!-- anchor-end:01-field-format-table -->
+
+<!-- anchor:other-files-fk-table -->
+| File | Column/field | Kind | PK it points to | Notes |
+|---|---|---|---|---|
+| `00_destination.md` | Success criteria item | ID | Destination criterion | `- [ ] **D1** — {criterion}` or `- [x] **D1** — {criterion}`. Number condition: with n items the number set = `D1`~`Dn` (no duplicates, no gaps), and inside one `### ` section the numbers grow from top to bottom |
+| `00_destination.md` | `In effect` | **Composite** | — | A **separate line** directly below each `D#`. Value format → grep -F "anchor:composite-in-effect" (NOTATION_CONVENTIONS) |
+| `00_destination.md` | change history `Date` | Date literal | — | Calendar date. Not a session PK/FK. Date format → grep -F "anchor:date-literal-full-list" (NOTATION_CONVENTIONS) |
+| `00_destination.md` | File structure | — | — | Conditions for fixed lines · placeholder lines · value lines per section. Destination writing rules → grep -F "anchor:00-writing-rules" (NOTATION_CONVENTIONS) |
+| `00_destination.md` | change history `Change` | Prose | — | Audit log prose. Blank and `—` forbidden |
+| `00_destination.md` | change history `Reason for change` | Prose | — | Audit log prose. Blank and `—` forbidden |
+| `02_knowledge_base.md` | index row `#` | ID | Lesson | `#K003`. **No path column**. Path derivation → grep -F "anchor:id-path-derivation" (NOTATION_CONVENTIONS) |
+| `02_knowledge_base.md` | `Validity` | Enum | — | A **separate set** from the tree `Status`. Vocabulary → grep -F "anchor:enum-column-vocab" (NOTATION_CONVENTIONS) |
+| `02_knowledge_base.md` | `Summary` / `Applies when` | Prose | — | These two columns are the **single source** of the summary |
+| `knowledge/K###.md` | `Discovered:` | ID | Attempt + Session | `#7 (2026-07-20)`. Inside the parentheses is the second PK (session). Discovered test → grep -F "anchor:notation-grammar" (NOTATION_CONVENTIONS) |
+| `knowledge/K###.md` | `Related attempts:` | ID | Attempt (multiple) | `#4, #7`. One or more · ascending numbers |
+| `knowledge/K###.md` | `Invalidation:` | **Composite** | Session | Invalidation value format → grep -F "anchor:composite-invalidation" (NOTATION_CONVENTIONS) |
+| `knowledge/K###.md` | revision history `Date` | Date literal | — | Calendar date |
+| `archive/tree_YYYY-MM.md` | frontmatter `attempts:` | ID | Attempt (multiple) | `[4, 7, 9]` or `[]`. Numbers without `#` · ascending |
+| `archive/tree_YYYY-MM.md` | frontmatter `last_updated` | Date literal | — | Calendar date |
+| `archive/tree_YYYY-MM.md` | the two migrated tables | — | **Same rules** as the original | Migration is a move. Character for character |
+| `sessions/YYYY-MM-DD.md` | `Attempt #N` | ID | Attempt | The attempt PK inside the `## Round N` header. Test `^## Round [1-9][0-9]* · Attempt {Attempt PK}( continued)?$` ({Attempt PK} → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS)). Every line of a session file that starts with `## ` must match this test. Not a separate PLAN field |
+| `sessions/YYYY-MM-DD.md` | `Lessons consulted:` | ID | Lesson (multiple) | `#K002, #K005` / `None`. Exactly 1 line per round. `—` is allowed only in an open round (`Conclusion: —`) |
+| `sessions/YYYY-MM-DD.md` | `Discard check:` | Prose | — | PLAN section. `None` when the briefing has 0 discard check candidates; with 1 or more, prose giving the basis a person judged (`None`, `—` or blank is an I-15 violation) |
+| `sessions/YYYY-MM-DD.md` | DO `Session paused` memo | **Composite** | — | A DO entry whose header ends with `Session paused`. The header exactly matches `^#### {Date literal} [0-9]{2}:[0-9]{2} — Session paused$` ({Date literal} → grep -F "anchor:date-literal-full-list" (NOTATION_CONVENTIONS)), and the three lines directly below exactly match, in order, `^Did: .+$` · `^Remaining: .+$` · `^Next first action: .+$`. The value of a line with nothing to write is `None` |
+| `sessions/YYYY-MM-DD.md` | CHECK `Success criteria met:` item lines | **Composite** | — | 1 or more lines in a closed round. Each line exactly matches `^- \[x\] .+: O — .+$` or `^- \[ \] .+: X — .+$`. Open rounds are not checked |
+| `sessions/YYYY-MM-DD.md` | CHECK `Distance to destination:` | **Composite** | — | Exactly 1 line in a closed round. Value = `{distance word} — {reason}` (the reason must not be blank). Open rounds are not checked. Vocabulary → grep -F "anchor:enum-column-vocab" (NOTATION_CONVENTIONS) |
+| `sessions/YYYY-MM-DD.md` | ACT `Conclusion:` line | Enum | — | The cycle-closed signal. Closed ⟺ exact match of `^Conclusion: ({conclusion word})$`, vocabulary → grep -F "anchor:enum-column-vocab" (NOTATION_CONVENTIONS). The initial value `Conclusion: —` is outside the vocabulary = open (not wrapped). wrap fills in a vocabulary word |
+| `locks/invalidation.lock` | control file | — | — | Session PK + invalidation targets (several lessons + reasons). Not persistent data (deleted on recovery) → not in the FK sweep. Parsing grammar → grep -F "anchor:marker-grammar" (NOTATION_CONVENTIONS) |
+| `locks/integrity-check.pending` | control file | — | — | Gate marker of the integrity check hook. No content (its existence is the signal). Not persistent data (deleted after the check) → not in the FK sweep. Grammar → grep -F "anchor:integrity-hook-marker" (NOTATION_CONVENTIONS) |
+| `locks/wrap-snapshot.json` | control file | — | — | The pre-write state record written by `nav.js snapshot`. Not persistent data (the next snapshot overwrites it) → not in the FK sweep |
+| `history/YYYY-MM.log` | record file | — | — | One per month. `nav.js snapshot` appends at the end the full text of each of `00`·`01`·`02`, as they are right before the write, that differs from its previous history entry. Entry header = `@@ History NNNN \| YYYY-MM-DD \| {file name} \| {n} lines`, and the n lines below it are the full text. `NNNN` = a number growing by 1 from 1 (it continues across months). Content already written is not edited or erased. The only checks that read this file are I-22 and `nav.js dest` → not in the FK sweep |
+| `CLAUDE.md` / `README.md` | — | — | — | No outgoing FK |
+<!-- anchor-end:other-files-fk-table -->
+
+<!-- anchor:notation-grammar -->
+**Notation grammar (common to all files)**
+
+| Item | Rule |
+|---|---|
+| Multi-value separator | `, ` (comma + space) fixed. `/`, `·` and line breaks forbidden |
+| Multi-value ordering | **Ascending, fixed** (`#K002, #K005`). Stabilizes diffs and invariant comparison |
+| Ordered ID list | ★ `Path:` is the **only exception.** Separator ` → ` (space on both sides) fixed, **sorting forbidden** (the order is the meaning) |
+| Checked, not applicable | `None` |
+| Unfilled / template initial value | `—` (em dash) |
+| Parenthesized note after an ID | **Forbidden**. `#K003 (driver)` → `#K003`. The only exception is `Discovered:` in `knowledge/K###.md` |
+| Attempt PK search pattern | `#7\b` — without `\b`, `#70` is a false hit |
+| Order of table data rows | Older rows on top; a new row is added at the **very bottom** of the table. "Latest row" = the bottom data row. Migration starts from the **top** data row |
+| Template row | A row whose cells are all `—` is not a data row (excluded from row counts and format checks). It is replaced when the first data row is written |
+| Initial values before first wrap | In `01_exploration_tree.md`, frontmatter `last_updated` and ★ `Started:` start as `YYYY-MM-DD`, and ★ `Body:` starts as `sessions/YYYY-MM-DD.md`. While `last_updated` is `YYYY-MM-DD` (before the first `/pdca-wrap` that ends a cycle writes), all three values must be these initial values to pass the format check, and the existence of the ★ `Body:` file is not checked |
+
+- `Discovered:` test: `^{Attempt PK} \({Date literal}\)$` **exact match** ({Attempt PK} → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS), {Date literal} → grep -F "anchor:date-literal-full-list" (NOTATION_CONVENTIONS))
+  (`#7 (driver issue)` → violation, `#7 (2026-07-20)` → pass)
+<!-- anchor-end:notation-grammar -->
+
+<!-- anchor:date-literal-full-list -->
+**Date literal columns — full list**
+
+Columns that hold only a `YYYY-MM-DD` calendar date. The check is an exact regex match. Date literal regex → grep -F "anchor:column-kind-definitions" (NOTATION_CONVENTIONS). No path derivation · not an FK. I-04 checks all five columns together with the ID columns.
+
+| # | File | Column/field |
+|---|---|---|
+| 1 | `00_destination.md` | change history `Date` |
+| 2 | `01_exploration_tree.md` | ★ Current Position `Started` |
+| 3 | `01_exploration_tree.md` | frontmatter `last_updated` |
+| 4 | `knowledge/K###.md` | revision history `Date` |
+| 5 | `archive/tree_YYYY-MM.md` | frontmatter `last_updated` |
+
+**Not included (date-shaped but not a date literal column — do not reclassify)**
+- `01_exploration_tree.md` Discarded Directions `Date` = a **session FK (ID column)**. A discard happens inside a cycle, so `sessions/[that day].md` exists
+- The date/time in a session file DO header (`#### YYYY-MM-DD HH:MM — …`) = a **heading**, not a date literal 'column'
+- The date in parentheses of `Discovered:` in `knowledge/K###.md` (`#N (YYYY-MM-DD)`) = the **second PK** of a composite PK. The own regex of `Discovered:` checks it
+- The date in `In effect: Discarded — {date}, {reason}` of `00_destination.md` = **inside a composite column**. The own regex of `In effect` checks it
+<!-- anchor-end:date-literal-full-list -->
+
+<!-- anchor:id-path-derivation -->
+**ID → path derivation rule**
+
+```
+Attempt      #N              → no path (exists only as a table row)
+Lesson       #K003           → knowledge/K003.md
+Session      2026-07-23      → sessions/2026-07-23.md
+Month        2026-07         → archive/tree_2026-07.md
+Destination  D1              → no path (an item inside 00_destination.md)
+```
+
+- A path is derived mechanically from the ID. The `Body` column holds the full derived path.
+- Writing a path that differs from the derivation is a violation (I-12).
+<!-- anchor-end:id-path-derivation -->
+
+<!-- anchor:frontmatter-empty-value-rule -->
+**frontmatter notation — no `#` · the empty value is `None`**
+
+In frontmatter no PK takes a `#` (in YAML `#` starts a comment): attempt `7`, lesson `K003`. In the body, `#7`, `#K003`.
+
+A normally empty ID slot is unified as **`None`, whatever the location**. frontmatter is no exception and `null` is not used (e.g. `best_attempt: None`, `archived_through: None`). "Unfilled (violation)" is `—` alone.
+- Check rule (no branching by location, a total function): pass ⟺ (`PK regex match` ∨ `value == None`). The whole complement is a violation — `value == —` is an unfilled violation (required field), any other value is a regex mismatch violation. (e.g. `best_attempt: 7`·`None` → pass / `best_attempt: —` → unfilled violation / `best_attempt: no7` → regex violation)
+- The only branch forced on the parser is the `#` drop described in this block — it is a prefix matter, orthogonal to the empty-value token
+- ⚠ Scope: applies **only to single-value ID fields**. The empty value of a list (`attempts`) stays `[]`, and of an integer (`backtracks`) stays `0` (each keeps its native empty value)
+<!-- anchor-end:frontmatter-empty-value-rule -->
+
+---
+
+## ② Branching · Current position
+
+<!-- anchor:branch-point-value-rule -->
+**`Branch point` value rule** (Recent Attempts · Discarded Directions · Migrated Attempt Summaries)
+
+`Branch point` = the attempt PK of the point this attempt branched out from. When writing a new row, use the value of the first true row of the table below, from the top.
+
+| Order | Condition | Value |
+|---|---|---|
+| 1 | The `#` of this row is `#0` | `—` |
+| 2 | An attempt that ran a next direction candidate, or a candidate discarded without running | Copy the `Branch point:` value of that candidate as it is |
+| 3 | Otherwise | The ★ `Attempt #:` value right before writing this row |
+
+- Value format: {Attempt PK} or `—` (condition 1 only). `None` and blank are violations. {Attempt PK} → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS)
+- In the Discarded Directions table `Branch point` is required even in a row whose `#` is `—` (`—` forbidden).
+- On migration the `Branch point` value is moved as it is.
+<!-- anchor-end:branch-point-value-rule -->
+
+<!-- anchor:current-position-update -->
+**★ Current Position update rule** (the tree write of `/pdca-wrap`)
+
+Return = writing a new Return Log row in this cycle. P = the attempt PK of this cycle. B = the `Branch point` value of the P row.
+
+| Field | When returned | When not returned |
+|---|---|---|
+| `Attempt #:` | The PK of the return point | P |
+| `Path:` | The existing path cut at the return point node (return point included) | Unchanged if the end node is P. If B is a node of the existing path, the existing path cut at the B node (B included) with P appended. Otherwise the chain path of B with P appended |
+| `Direction:` | One line of prose confirmed by the user | One line of prose confirmed by the user |
+| `Status:` | The computed status of the new `Attempt #:` value set by this table | The computed status of the new `Attempt #:` value set by this table |
+| `Started:` | Today | Today if `Attempt #:` changed, otherwise unchanged |
+| `Body:` | The session file path of this cycle | The session file path of this cycle if `Attempt #:` changed, otherwise unchanged |
+
+- Pre-write condition: when returned = the return point is a node of the existing path. When not returned = the end node of the existing path is P, or B is a node of the existing path, or the chain path of B is not `None`. B when the P row does not exist yet = the `Branch point` value to be written in that row. Chain path = the `ChainPath:` value of the `node .claude/hooks/nav.js onpath {B}` output.
+- At the step that receives whether a return happened, `/pdca-wrap` tests the pre-write condition with the `EndNode:` · `Contains:` · `RowBranchPoint:` · `ChainPath:` values of the `node .claude/hooks/nav.js onpath {Attempt PK}` output. If false, it writes nothing and asks again whether a return happened.
+- Path format → grep -F "anchor:01-format-position-path-attempt" (NOTATION_CONVENTIONS) · Status determination → grep -F "anchor:status-determination" (NOTATION_CONVENTIONS)
+- `Status:` is not chosen by a person. Copy the `Status:` value of the `node .claude/hooks/nav.js state {new Attempt #}` output as it is.
+- A span abandoned by a return is not written in the path. The trace of a return is kept only in the Return Log table. When an attempt of an abandoned span is resumed and the path is written from its chain path, that span comes back into the path.
+<!-- anchor-end:current-position-update -->
+
+<!-- anchor:status-determination -->
+**Status · Result determination** (computed values — `nav.js` computes them from the session files. A person does not choose them)
+
+- Round = from a round header of a session file to right before the next `## ` line. Closed round = a round whose `Conclusion:` line is a conclusion word. Open round = any other round.
+- Rounds of attempt X = the rounds in all session files whose header attempt number is X. Order = ascending file date, and top to bottom inside one file.
+- Latest closed round = the last in that order among the closed rounds of attempt X.
+
+**Result** (the value of one round) = computed from the item lines (starting with `- [`) that follow directly below the CHECK `Success criteria met:` line of that round. The first true row from the top.
+
+| Order | Condition | Result |
+|---|---|---|
+| 1 | There are 0 item lines, or there is an item line that does not fit the format | Undetermined |
+| 2 | All item lines are `[x]` | Success |
+| 3 | All item lines are `[ ]` | Failure |
+| 4 | Otherwise | Partial |
+
+**Status** (the value of attempt X). The first true row from the top.
+
+| Order | Condition | Status |
+|---|---|---|
+| 1 | X has an open round, X has 0 closed rounds, and across all rounds of X there are 0 DO entry headers (lines starting with `#### ` between the `### DO` line and the `### CHECK` line) | To Do |
+| 2 | X has an open round | In Progress |
+| 3 | X has 0 rounds and X = `#0` | To Do |
+| 4 | X has 0 rounds | Undetermined |
+| 5 | `Conclusion` of the latest closed round = Discarded | Canceled |
+| 6 | Result of the latest closed round = Undetermined | Undetermined |
+| 7 | Result of the latest closed round = Success | Done |
+| 8 | `Conclusion` of the latest closed round = Pivot | On Hold |
+| 9 | `Distance to destination` word of the latest closed round = Closer | In Progress |
+| 10 | `Distance to destination` word of the latest closed round = Same or Farther | Blocked |
+| 11 | Otherwise | Undetermined |
+
+- ★ `Status:` = the status of the ★ `Attempt #:` attempt. `Result` of a Recent Attempts row = the result of the latest closed round of that attempt, `Conclusion` = the `Conclusion:` line value of that round. `/pdca-wrap` copies the `node .claude/hooks/nav.js state {Attempt PK}` output, and I-20 compares the written values with the computed values.
+- A next direction candidate line (no attempt number) corresponds to Backlog. This value is written nowhere. The fact that the line is in the candidate list is that status.
+- Item lines · `Distance to destination` format → grep -F "anchor:other-files-fk-table" (NOTATION_CONVENTIONS) · Result, conclusion, status and distance vocabulary → grep -F "anchor:enum-column-vocab" (NOTATION_CONVENTIONS)
+<!-- anchor-end:status-determination -->
+
+<!-- anchor:candidate-format -->
+**Next direction candidate format** (`01_exploration_tree.md`)
+
+- Candidate line = a line starting with `- ` in the "Next Direction Candidates" section. 0 or more lines and at most the count cap. With no candidates, no line is kept. Count cap → grep -F "anchor:01-format-position-path-attempt" (NOTATION_CONVENTIONS)
+- Candidate line regex (exact match): `^- \*\*[A-C]\.\*\* .+ — Branch point: {Attempt PK} — Basis: .+$` — in order: one of the bullets `A`·`B`·`C`, direction prose, the `Branch point:` value, basis prose. ({Attempt PK} → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS))
+- `Branch point:` = the ★ `Attempt #:` value at the time the candidate is written.
+- An attempt number is issued at the time the candidate is run. It is not issued in advance on the candidate line.
+- When a candidate is run it moves to Recent Attempts as a row with a new number; when discarded without running it moves to Discarded Directions as a row with `#` = `—`; the candidate line is erased. `Branch point` value → grep -F "anchor:branch-point-value-rule" (NOTATION_CONVENTIONS)
+<!-- anchor-end:candidate-format -->
+
+---
+
+## ③ Invariants
+
+<!-- anchor:verdict-values -->
+| Value | Meaning | Required addition |
+|---|---|---|
+| `✅` | Pass | The value read |
+| `❌` | Violation | The value read + the expected value |
+| `⚠` | Undetermined (it must be checked but the field is missing or the format is broken, so it cannot be compared) | Why it could not be done |
+| `skipped` | Nothing to check (a normal empty state) | Why there is no target |
+<!-- anchor-end:verdict-values -->
+
+<!-- anchor:invariant-tiers -->
+| Tier | Items | Run condition |
+|---|---|---|
+| **T1** | All items of T1 invariants → grep -F "anchor:invariant-table-T1" (NOTATION_CONVENTIONS) | Always |
+| **T2** | All items of T2 invariants → grep -F "anchor:invariant-table-T2" (NOTATION_CONVENTIONS) | Always run, and `skipped` when the run condition of the table is false |
+| **T3** | All items of T3 invariants → grep -F "anchor:invariant-table-T3" (NOTATION_CONVENTIONS) | Always run, and `skipped` when there is no migrated row |
+<!-- anchor-end:invariant-tiers -->
+
+<!-- anchor:invariant-table-T1 -->
+| # | Invariant | How it is checked |
+|---|---|---|
+| I-01 | The section count and code block line count of ★ Current Position equal Format 1. 01 index format → grep -F "anchor:01-format-position-path-attempt" (NOTATION_CONVENTIONS) | Section count + line count |
+| I-02 | The section count and code block line count of ◎ Best Record equal Format 4. 01 index format → grep -F "anchor:01-format-position-path-attempt" (NOTATION_CONVENTIONS) | Section count + line count |
+| I-03 | Count caps — the data row counts of Return Log / Recent Attempts / Next Direction Candidates are at most the caps of Format 5. 01 index format → grep -F "anchor:01-format-position-path-attempt" (NOTATION_CONVENTIONS) | Data row count |
+| I-04 | Every field with a set format matches its own format (no parenthesized notes, no mixed-in prose). Targets = ① all ID columns, date literal columns and candidate lines of `01_exploration_tree.md` (an empty frontmatter ID slot is `None`) ② in the other files, every row whose `Kind` is ID, Composite or Date literal, and the two migrated tables of the archives. List of checked fields → grep -F "anchor:other-files-fk-table" (NOTATION_CONVENTIONS). A folder with no files (0 lessons, sessions or archives) has nothing to check and passes ③ for every table data row of 01, 02 and the archives, cell count = the cell count of the header row (`|` is not used in a cell value) ④ for every session file, the date of the file name ≤ today, and the round numbers grow from top to bottom (no equal numbers) ⑤ the header rows of the Recent Attempts table and the Discarded Directions table of `01_exploration_tree.md` match their header regexes (Recent Attempts = Format 3 · Discarded Directions table format → grep -F "anchor:01-format-discarded-directions" (NOTATION_CONVENTIONS)) ⑥ for every closed round of a session file, CHECK `Success criteria met:` item line count = PLAN `Success criteria (this cycle):` item line count | Exact regex match + cell count, date and integer comparison |
+| I-05 | Every enum column belongs to its fixed vocabulary (`Status`·`Result`·`Conclusion` of 01, `Validity` of 02, `Result`·`Conclusion` of the archive Migrated Attempt Summaries). In a session file every round has exactly 1 `Conclusion:` line whose value is a conclusion word or `—` | Set matching |
+| I-06 | A no-compression prose column is not blank and not `—`<br>(`Why that point`·`Discard reason`·`Retry condition`·`What blocked it`. `What blocked it` only when `Closest attempt` is not `—`) | Blank check |
+| I-07 | Both ends of `Path` agree — first node `#0`, end node = ★ `Attempt #` | String equality |
+| I-08 | The second-to-last node of `Path` = the `Branch point` of the current attempt row (`skipped` when the path is a single node. The current attempt row is looked up in the archives when not in the tree, and `⚠` when there is not exactly 1) | Table lookup, then equality |
+| I-09 | In every row of Recent Attempts and Discarded Directions, `Branch point` ≤ `#` (rows whose `#` or `Branch point` is `—` are excluded. `⚠` when either is not in attempt PK format) | Integer comparison |
+| I-21 | `00_destination.md` structure — the fixed line list equals the structure template, there is no placeholder line, and every section fills its value line condition (a missing file is a violation). Destination writing rules → grep -F "anchor:00-writing-rules" (NOTATION_CONVENTIONS) | String equality of the line list + line count |
+| I-23 | Open rounds (rounds whose `Conclusion:` line is not closed with a conclusion word) number at most 1 across all session files | Round count |
+<!-- anchor-end:invariant-table-T1 -->
+
+<!-- anchor:invariant-table-T2 -->
+| # | Invariant | Run condition | How it is checked |
+|---|---|---|---|
+| I-10 | Every `#K###` the tree references exists as `knowledge/K###.md` and has an index row in `02_knowledge_base.md` | When there is at least one lesson reference | File existence + index `#` column match |
+| I-11 | Two-way FK agreement — the `Lesson` column of an attempt row ↔ `Related attempts` of `knowledge/K###.md` (all attempt rows of the tree and the archives) | When there is at least one lesson–attempt pair | Comparison of both sets |
+| I-12 | The `Body` paths of ★, Recent Attempts and Return Log match the ID → path derivation and the files exist (a ★ `Body` that is the initial value before first wrap is excluded. Initial values → grep -F "anchor:notation-grammar" (NOTATION_CONVENTIONS)) | Always | Regex + file existence |
+| I-13 | Split check of the ◎ `Why closest` composite column + every cited `D#` exists in a success criteria item line of `00_destination.md` | When `Why closest` is not `—` | Regex + item search |
+| I-14 | The `Return point` of the latest Return Log row exists in `Path` and ★ `Attempt #:` = that `Return point` | When there is a Return Log row that was not in the snapshot | Set membership + string equality |
+| I-15 | The `Discard check:` line of the last round of the latest session file has a basis (not `None`, `—` or blank) | When there is a discarded row whose `Branch point` is in the check node set, and that last round is not an open round whose `PLAN:` value is `Unwritten` in `brief` | Set intersection + line check |
+| I-19 | Lesson invalidation agrees on both sides — index `Validity` = `Invalid` **⟺** body `Invalidation:` ≠ `None` / the set of lesson files in `knowledge/` = the index `#` set | When there is at least one index row or lesson file | Index row ↔ body field comparison + set equality |
+| I-20 | Computed values agree — ★ `Status` = the computed status of the ★ attempt / `Result`·`Conclusion` of each Recent Attempts row = the computed result and the `Conclusion:` line of the latest closed round of that attempt / a row whose `Conclusion` is Discarded has a row with the same `#` in Discarded Directions / in the Discarded Directions table, a row whose `#` is an attempt PK has a computed status equal to the last value of the status vocabulary (the discarded status) and `Branch point` = the `Branch point` of the attempt summary row with the same `#` in the tree or the archives (compared only when there is exactly 1 attempt summary row) (`⚠` when the computation is undetermined). Computation rules → grep -F "anchor:status-determination" (NOTATION_CONVENTIONS) | Always | String equality of the written value and the computed value |
+| I-22 | Destination criteria are fixed — for every `D#` that appears in a full text of `00_destination.md` in `history/`, the current file has an item line with the same number, and its wording (after ` — `) equals the wording in the full text where that number first appeared in the history | When the history has a full text of `00_destination.md` and it holds at least one `D#` | String equality |
+<!-- anchor-end:invariant-table-T2 -->
+
+<!-- anchor:invariant-table-T3 -->
+| # | Invariant | How it is checked |
+|---|---|---|
+| I-16 | Migration is a **move** — the same row is not on both sides, tree and archive, and a row missing from the tree compared with the snapshot is in an archive. Missing row = for attempt summaries, a snapshot row whose `#` value is not in the tree (a row with the same `#` must be in an archive); for the Return Log, a snapshot row with no character-identical row in the tree | Comparison of both sides |
+| I-17 | `archived_through` = the greatest month among the archive files that have data rows (`None` when there is none) | String equality |
+| I-18 | `YYYY-MM` of the `Body` path of each archive row = the month of the file that row is in | Path parsing |
+<!-- anchor-end:invariant-table-T3 -->
+
+<!-- anchor:check-execution -->
+**Running checks and lookups — `.claude/hooks/nav.js`**
+
+The script does invariant checks and index value lookups. A command runs the command line and follows the output as it is. It does not recompute or rewrite the verdict values and values of the output.
+
+| Command (appended after `node .claude/hooks/nav.js`) | Output |
+|---|---|
+| `check` | The verdict block of all items of the three invariant tables |
+| `check --c3` | The verdict block of I-01 · I-07 · I-08 · I-09 |
+| `status` | 3 lines: `[Current position]` · `[Status]` · `[Do-not-retry directions]` |
+| `state {Attempt PK}` | 4 lines: `Attempt:` · `Result:` · `Conclusion:` · `Status:` |
+| `brief` or `brief {session file path} {round number}` | `[Path]` · `[Current position]` · `[Destination criterion]` · `[Best Record]` · `[Discard check candidates]` · `[Valid lessons]` · `[Next Direction Candidates]` · `[Open cycle]` · `[Resume point]` |
+| `last {Attempt PK}` | The `[Last round]` block or `[Last round] None` |
+| `onpath {Attempt PK}` | 5 lines: `Path:` · `EndNode:` · `Contains:` · `RowBranchPoint:` · `ChainPath:` |
+| `route` | `Today` · `Now` · `LatestSessionPath` · `TodayFileExists` · `RoundSet` · `OpenRoundCount` · `OpenRound` (0 or more lines) · `NextRound` · `ResumableAttempts` · `NextAttemptNumber` |
+| `dest --create` | When `00_destination.md` does not exist, creates the file by writing the structure template character for character and prints one line `Destination file created: …`. `[nav.js error]` when the file already exists |
+| `dest` | `Today:` · `DestinationFile:` · `DestinationStatus:` · `Final Goal:` · `Criterion:` (0 or more lines) · `NextCriterionNumber:` · the I-21 item line · the I-22 item line |
+| `recover` | `Marker: None`, or per marker the `Session` and `Target` lines and a final `Incomplete:` line |
+| `snapshot` | Records the pre-write state in `locks/wrap-snapshot.json`, and appends at the end of `history/YYYY-MM.log` (the month of today) the full text of each of `00_destination.md`·`01_exploration_tree.md`·`02_knowledge_base.md` that differs by even one character from its latest history entry. Appends nothing when no file differs |
+| `history` | One line per history entry `NNNN \| YYYY-MM-DD \| {list of files written in that entry}` (ascending numbers) or `History: None` |
+| `diff {number} {number}` | The line-level difference of two history entries. When the second number is omitted, the difference between the first entry and the current files. `- ` = a line only on the earlier side, `+ ` = a line only on the later side |
+| `anchor {key}` | The original text of an anchor block of this file |
+
+- An item line of a verdict block = ` I-NN  {verdict value}  {value read}`, and a `❌` gets `expected:` on the next line. Verdict values → grep -F "anchor:verdict-values" (NOTATION_CONVENTIONS)
+- The last two lines of a verdict block = `Result: pass a / violation b / undetermined c / skipped d` · `IsolationSet: {I-NN in ascending order | None}`. IsolationSet = the `❌` items (with `--c3`, the `❌` and `⚠` items).
+- A `[Notice]` line = an alert threshold was exceeded; it is not a violation. Alert thresholds (3, in this order): `01_exploration_tree.md line count` > 150 · `path node count` > 8 · `lesson list row count` > 40. A command only reports them and does not delete or shorten anything.
+- Output starting with `[nav.js error]` = the run failed. The command stops and shows that line to the user. These are also `[nav.js error]`: a command not in the table · a `check` or `dest` argument not in the table · a command that reads `01_exploration_tree.md` when that file does not exist · `recover` when `locks/` holds a `.lock` file that is not `invalidation.lock` · an invalidation marker line that fits none of the `Session:` line · the `Invalidation target:` line · the target line regex during `recover`.
+- An item whose check raised a script exception is `❌`, and `error during check: {message}` comes in the place of the value read (it is in the IsolationSet).
+- On a violation: propose a fix, and do not edit a file without user approval.
+- Invariant definitions: T1 invariants → grep -F "anchor:invariant-table-T1" (NOTATION_CONVENTIONS) · T2 invariants → grep -F "anchor:invariant-table-T2" (NOTATION_CONVENTIONS) · T3 invariants → grep -F "anchor:invariant-table-T3" (NOTATION_CONVENTIONS) · run condition per tier → grep -F "anchor:invariant-tiers" (NOTATION_CONVENTIONS)
+- `state` output: `Result:`·`Conclusion:` = the values of the latest closed round of that attempt (`None` when there is no closed round), `Status:` = the computed status. When it cannot be computed, `Undetermined — {reason}` comes in the place of the value.
+- The status of `status`·`brief` = `{status} (Attempt {Attempt PK})`. Target attempt = when there is an open round, in `route` the first `OpenRound` line attempt (then ` · open Round N` is added inside the parentheses); otherwise ★ `Attempt #:`.
+- `dest` output: `DestinationFile` = `Present` or `None`. `DestinationStatus` = `Unwritten` (the file does not exist or equals the structure template line by line) / `Written` (I-21 is `✅` and I-22 is not `❌`) / `FormatViolation` (anything else). `Final Goal:` = that line when the section has exactly 1 value line, otherwise `None`. A `Criterion:` line = `Criterion: {D#} | {[ ] or [x]} | {Quantitative or Qualitative} | {In effect value} | {Recorded or Unrecorded} | {wording}`. Structure template → grep -F "anchor:00-file-structure" (NOTATION_CONVENTIONS)
+- The `[Best Record]` line of `brief` = `{Closest attempt} | {Why closest} | What blocked it: {What blocked it}`, copying the values of the ◎ Best Record code block of `01_exploration_tree.md` as they are. `None` when `Closest attempt` is `—`.
+- `Now` of `route` = the run time `HH:MM` (24-hour). `OpenRoundCount` and the `OpenRound` lines are counted across all session files. An `OpenRound` line = `OpenRound: Round {N} · Attempt {Attempt PK}{ continued} · {session file path}` (a file with a later date comes first, and inside one file a lower round comes first. Round numbers grow downward inside a file).
+- `[Open cycle]` of `brief` = `None` when there is no open round. Otherwise the target round (with arguments, that open round of that session file; without arguments, the round of the first `OpenRound` line of `route`. `[nav.js error]` when the arguments point to no open round) is written as `Round {N} · Attempt {Attempt PK} · {session file path}`, and below it, indented and copied character for character from that round block: 1 `Goal:` line · the `Hypothesis:` lines · the `Success Criteria:` lines · `DO: {entry count}` with the list of DO entry headers · 1 `PLAN: {Written | Unwritten}` line. `Unwritten` = among the five PLAN slots of that round (`Cycle goal:` · `Hypothesis:` · `Success criteria (this cycle):` · `Lessons consulted:` · `Discard check:`) there is a slot whose value is `—` or that has no value line. `Written` = anything else.
+- `last` output: target = the very last round, in session file and round order, among the closed rounds of that attempt (the same round `state` reads). `[Last round] None` when there is no closed round. Otherwise, below `[Last round] Round {N} · Attempt {Attempt PK} · {session file path}`, indented and copied character for character from that round block: `Goal:` · the `Hypothesis:` lines · the `Success Criteria:` lines · `DO: {entry count}` with the list of DO entry headers · the `Success criteria met:` lines · `Distance to destination:` · `Conclusion:` · the `Reason:` lines.
+- `onpath` output: `Path:` = the ★ `Path:` value. `EndNode:` = the last node of that path. `Contains:` = `Yes` when the argument is a node of that path, otherwise `No`. `RowBranchPoint:` = the `Branch point` value of the row whose `#` is the argument, in Recent Attempts and in the Migrated Attempt Summaries of every `archive/tree_YYYY-MM.md` (`None` when there is no such row). `ChainPath:` = the node sequence walked back from the argument to the `Branch point` of its attempt row, then the `Branch point` of that attempt row, and so on down to `#0`, written from `#0` in path format (`#0` when the argument is `#0`). `None` when, on the way back, some attempt does not have exactly 1 row, or a `Branch point` is not in {Attempt PK} format or is not below the `#` of its row. `[nav.js error]` when the argument has 2 or more rows or the ★ path cannot be read as nodes.
+- `[Discard check candidates]` of `brief` = the rows of the Discarded Directions table whose `Branch point` is in the check node set. Check node set = ★ `Path` nodes ∪ the chain path nodes of the attempt of the target open round (only the ★ `Path` nodes when there is no open round or the chain path is `None`). Header line = `[Discard check candidates] {row count} (Branch point ∈ Path)`, and when the chain path added a node outside the ★ path the parentheses hold `Branch point ∈ Path ∪ Attempt {Attempt PK} ChainPath {chain path}`. The check node set of I-15 is built the same way from the attempt of the first `OpenRound` line of `route`.
+- `[Resume point]` of `brief` = `Did: {value} | Remaining: {value} | Next first action: {value}` when the last DO entry of that round is a well-formed session-pause memo, otherwise `None`.
+- `NextAttemptNumber` = the greatest attempt number among the tree, the archives and the round headers of all session files, + 1 (no reuse).
+- `ResumableAttempts` = the attempt numbers found in the ★ `Path` nodes of `01_exploration_tree.md` · Recent Attempts `#` · every `archive/tree_YYYY-MM.md` Migrated Attempt Summaries `#`, minus `#0` and the numbers in the `#` column of the Discarded Directions table (ascending, `None` when empty). Item = `{Attempt PK} ({computed status})`, joined with `, `. The computed status is the same value as `Status:` of `state`, and when it cannot be computed the parentheses hold `Undetermined`. `#0` is the state before the first attempt, so it is not an attempt to resume.
+<!-- anchor-end:check-execution -->
+
+<!-- anchor:invalidation-write-order -->
+**Invalidation transaction — write order**
+
+A lesson invalidation is written in 3 places: index, body and tree. It is written only in the order below.
+
+1. Create `locks/invalidation.lock` — record the target lessons and reasons first. Invalidation marker format → grep -F "anchor:marker-grammar" (NOTATION_CONVENTIONS)
+2. Set `Validity` of the target row of the index `02_knowledge_base.md` to `Invalid`
+3. Fill in `Invalidation:` of the body `knowledge/K###.md`. Invalidation value format → grep -F "anchor:composite-invalidation" (NOTATION_CONVENTIONS)
+4. Fill in the Return Log row of the tree `01_exploration_tree.md` (including the `Invalidated lessons` column)
+5. Delete `locks/invalidation.lock`
+
+- Each step is skipped when it is already applied.
+- A remaining marker means the last invalidation was interrupted. The next `/pdca-start` runs 2~5 again with the targets and reasons of the `recover` output. The targets and reasons are not judged again.
+- Neither the index row nor the body file is deleted.
+<!-- anchor-end:invalidation-write-order -->
+
+<!-- anchor:marker-grammar -->
+**Marker grammar — `locks/invalidation.lock`** (control file of the invalidation transaction)
+
+    Session: 2026-07-29
+    Invalidation target:
+      #K003 — the fixed-driver premise collapsed with the return to #4
+      #K007 — unnecessary after the higher goal changed
+
+- File form = **plain text** (no YAML frontmatter). It has exactly two sections: 1 `Session:` line + the `Invalidation target:` section (1 or more target lines).
+- `Session:` value = 1 session PK.
+- For each target line of the invalidation target section, the target line regex (exact match): `^{Lesson PK} — .+$`. Left = lesson PK, right = reason prose (must not be blank).
+- The PK formats of this marker (`YYYY-MM-DD` of the `Session` value, `#K###` on the left of a target line) are not newly defined but referenced → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS).
+- Target lines are **ascending, fixed** — the format lists 1 target per line, so its ordering rule is separate from columns that put several comma-separated values in one cell. For stable diffs and recovery comparison.
+- Valid example: `#K003 — driver premise collapsed` · Violation examples: `#K3 — reason` (not three digits) · `#K003` (no ` — reason`) · `#K003 —` (blank reason)
+- This block sets the **format** only.
+<!-- anchor-end:marker-grammar -->
+
+<!-- anchor:integrity-hook-marker -->
+**Marker grammar — `locks/integrity-check.pending`** (gate of the integrity check hook)
+
+- File form = **empty file** (no content). The test is **existence only** — when it exists, "now is the time to check"; when absent, the hook is a no-op. No content parsing.
+- Existence test (exact match): true/false of `test -f locks/integrity-check.pending`.
+- Naming: `locks/` lowercase plain (same shape as archive·knowledge·sessions). The extension `.pending` is **fixed** — with `.lock`, `nav.js recover` would read it as an invalidation marker, so `.lock` is **forbidden**.
+- It is a **separate file with a separate purpose** from the invalidation marker (`locks/invalidation.lock`): the invalidation marker = a durable record of intent written **right before** the writes · deleted by wrap/start (for recovery). This marker = created **after all** writes are done · deleted by the hook (the check-time gate). Creation time and the deleting party are opposite, so they cannot be merged into one file.
+- Valid example: `locks/integrity-check.pending` · Violation examples: `locks/integrity-check.lock` (read as an invalidation marker) · `locks/integrityCheck.pending` (uppercase/camel = violates lowercase plain)
+- This block sets the **format** only.
+<!-- anchor-end:integrity-hook-marker -->
+
+<!-- anchor:integrity-hook-rules -->
+**Integrity check hook** (`.claude/hooks/integrity-check.js`)
+
+- Fires on = PostToolUse `Write` matcher. Registered in = `hooks.PostToolUse` of `.claude/settings.json`.
+- Marker gate: it checks only when `locks/integrity-check.pending` exists, and deletes the marker right after the check. Without the marker it does nothing. Integrity marker format → grep -F "anchor:integrity-hook-marker" (NOTATION_CONVENTIONS)
+- `/pdca-wrap` creates the marker with Write after finishing all writes (that Write fires the hook).
+- The check calls the same function as `check` of `nav.js`. The hook has no check logic of its own.
+- systemMessage output forms (exact match · 4 states):
+
+| State | Output regex |
+|---|---|
+| 0 violations | `^\[Integrity\] ✅ 0 violations( \(undetermined [0-9]+\))?$` |
+| 1 or more violations | `^\[Integrity\] ❌ I-[0-9]{2}(, I-[0-9]{2})*$` |
+| Format constants stale | `^\[Integrity\] ⚠ format constants stale — .+$` |
+| Any other run failure | `^\[Integrity\] ⚠ check failed — .+$` |
+
+- The hook is an auxiliary signal. `/pdca-wrap` proceeds with the verdict block that carries the values read, and with the fix loop, from the `check` output.
+<!-- anchor-end:integrity-hook-rules -->
+
+<!-- anchor:do-record-hook-rules -->
+**DO record hook** (`.claude/hooks/do-check.js`)
+
+- Fires on = Stop (when a response ends). Registered in = `hooks.Stop` of `.claude/settings.json`.
+- Input = JSON on standard input. Values read = `stop_hook_active` · `transcript_path` (the transcript file · one JSON per line).
+- This response = from the last user input line of the transcript file to the end of the file. User input line = a line whose `type` is `user`, whose `isSidechain` and `isMeta` are not true, and whose content has no `tool_result`.
+- File-writing tools = `Write` · `Edit` · `MultiEdit` · `NotebookEdit`
+- Command-running tools = `Bash` · `PowerShell`
+- Target round = the round of the first `OpenRound` line of the `route` output.
+- Action = a `tool_use` of this response that used a file-writing tool or a command-running tool. A file write aimed at the session file of the target round, and a command whose command string contains `nav.js`, are not counted.
+- Test (the first true row from the top):
+
+| Order | Condition | Behavior |
+|---|---|---|
+| 1 | `stop_hook_active` is true (a response continued because this hook blocked just before) | Pass |
+| 2 | There are 0 open rounds | Pass |
+| 3 | A `user` line inside this response has `<command-name>/pdca-`, or this response has a `tool_use` that ran, with the `Skill` tool, a command whose name starts with `pdca-` | Pass |
+| 4 | There are 0 actions | Pass |
+| 5 | This response has a file-writing tool use aimed at the session file of the target round | Pass |
+| 6 | Otherwise | Block |
+
+- Pass = print nothing. Block = print a JSON whose `decision` is `block`. Its `reason` regex (exact match): `^\[DO record\] no DO entry for [0-9]+ actions — .+$`
+- When a value needed for the test cannot be read (input JSON · transcript file · user input line · open round), it does not block and prints one systemMessage line. Regex (exact match): `^\[DO record\] ⚠ could not check — .+$`
+- The hook only looks at whether a DO entry exists. It does not judge content or format. DO entry format → grep -F "anchor:session-file-writing" (NOTATION_CONVENTIONS)
+<!-- anchor-end:do-record-hook-rules -->
+
+<!-- anchor:integrity-hook-format-loading -->
+**Format loading — generated constants + regeneration comparison**
+
+The single source of formats (regexes, vocabulary, caps, path tests) is the format anchors of this file: `anchor:pk-definition-table` · `anchor:enum-column-vocab` · `anchor:column-kind-definitions` · `anchor:composite-why-closest` · `anchor:01-format-position-path-attempt` · `anchor:01-field-format-table` · `anchor:date-literal-full-list` · `anchor:other-files-fk-table` · `anchor:composite-in-effect` · `anchor:composite-invalidation` · `anchor:notation-grammar` · `anchor:00-file-structure` · `anchor:00-writing-rules` · `anchor:candidate-format` · `anchor:session-file-structure` · `anchor:do-record-hook-rules` · `anchor:check-execution` · `anchor:invariant-table-T1` · `anchor:invariant-table-T2` · `anchor:invariant-table-T3` · `anchor:marker-grammar` · `anchor:k-file-structure` · `anchor:01-format-discarded-directions`.
+
+- `{Attempt PK}` · `{Lesson PK}` · `{Session PK}` · `{Destination criterion PK}` · `{Date literal}` inside a regex are slot names. The generator fills them with the regexes of the PK definition table and the column kind definitions (the same regex is not written twice in this file).
+- The generator `.claude/hooks/gen-format-constants.js` reads these 23 anchor blocks and makes `.claude/hooks/format-constants.json`. `nav.js` loads only this file and does not write the formats again inside the script. The line labels of a session file are picked by section and order from the round skeleton of the session file structure (1 between the round header and `### PLAN` · 4 in the `### PLAN` section · the first 2 of the `### CHECK` section · the first 2 of the `### ACT` section). The generator stops when these counts do not fit. The invariant list is picked from the `#` column of the three invariant tables, the C3 list from the `check --c3` row of the checks-and-lookups table, the alert thresholds from the `[Notice]` line, and the line labels of a lesson file from the 3 code block lines of the lesson file structure. `[nav.js error]` when the list of check functions of `nav.js` differs from the invariant list.
+- `format-constants.json` must not be edited by hand. When any of these 23 anchors is edited, make it again with `node .claude/hooks/gen-format-constants.js --write`.
+- Freshness check = "the constants regenerated now == the saved `format-constants.json`" (whole-string equality after turning CRLF into LF). If false, `nav.js` does not check and prints `[nav.js error] STALE: …`.
+<!-- anchor-end:integrity-hook-format-loading -->
+
+<!-- anchor:01-format-position-path-attempt -->
+**01 index format — ★ Current Position · Path · Recent Attempts · ◎ Best Record · count caps**
+
+The format tests of `01_exploration_tree.md`. The single source of the format rules is here.
+
+**Format 1 — ★ Current Position section** (source of I-01 count and line count · I-07 path and attempt #)
+- Section header = a line matching `^## ★ Current Position`. **exactly 1 section** (I-01 section count).
+- Body = the code fence block right after the header, **exactly 6 lines** inside (I-01 line count).
+- 2 lines referenced by C3: `^Attempt #: {Attempt PK}$` · `^Path: .+$` ({Attempt PK} regex → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS); path value → Format 2).
+- The other 4 lines (Direction, Status, Started, Body) count only toward the I-01 line count and are not format-tested by this block.
+- Valid example: 1 `## ★ Current Position` + 6 lines · Violation examples: 2 headers (I-01 count violation) · a body of 5 or 7 lines (line count violation).
+
+**Format 2 — Path** (source of I-07 both ends · I-08 end-1 and node count)
+- path value := the value of the `Path:` line of the ★ section.
+- nodes := the ordered sequence from splitting the path value by separator ` → ` (space + `→` + space). Each node = {Attempt PK} (regex → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS)).
+- I-07: `nodes[0] = #0` ∧ `nodes[end] = ★ Attempt #: value`.
+- I-08: `|nodes| = 1 → skipped` · `|nodes| ≥ 2 → nodes[end-1] = Branch point of the current attempt` (Format 3).
+- Valid example: `#0 → #4 → #11` · Violation examples: `#0->#4` (no spaces in the separator) · `#4 → #11` (first node ≠ #0).
+
+**Format 3 — Recent Attempts table** (source of I-08 branch point · I-09 # and branch point)
+- Header = `^\| # \| Branch point \| Direction \| Result \| Conclusion \| Lesson \| Body \|$`.
+- Data row: `#` column = {Attempt PK} · `Branch point` column ∈ { {Attempt PK}, `—` }. `—` is allowed only in the row whose `#` column is `#0`, and `None` is forbidden.
+- I-08: the `Branch point` column value of the current attempt (★ Attempt #) row.
+- I-09: the integer comparison `Branch point ≤ #` in every data row (`#N` → N; rows whose `Branch point` column is `—` are left out of the comparison).
+- Valid example: `| #11 | #4 | … |` (4 ≤ 11) · Violation examples: a Branch point cell of `None` (outside the vocabulary) · blank · `| #4 | #11 | … |` (11 ≤ 4 is false = I-09 order reversal).
+
+**Format 4 — ◎ Best Record section** (I-02 count and line count)
+- Section header = a line matching `^## ◎ Best Record`. **exactly 1 section** (I-02 section count).
+- Body = the code fence block right after the header, **exactly 3 lines** inside (I-02 line count): `Closest attempt:` · `Why closest:` · `What blocked it:`.
+- The value formats of the three lines count only toward the I-02 line count and are not tested by this format — value formats of the three lines → grep -F "anchor:01-field-format-table" (NOTATION_CONVENTIONS) (after loading the block, scan the "◎ Best Record" rows).
+- Valid example: 1 `## ◎ Best Record` + 3 lines · Violation examples: 2 headers (count violation) · a body of 2 or 4 lines (line count violation).
+
+**Format 5 — section count caps** (I-03 · row count)
+- Data row count cap of each section: `Return Log` ≤ 3 · `Recent Attempts` ≤ 3 · `Next Direction Candidates` ≤ 3.
+- Test = the data row count of each section is at most the cap. Valid example: 3 Recent Attempts rows · Violation example: 4 Recent Attempts rows.
+<!-- anchor-end:01-format-position-path-attempt -->
+
+<!-- anchor:01-format-discarded-directions -->
+**01 index format — Discarded Directions table**
+
+The header format and the discard check filter key of the "Discarded Directions" table of `01_exploration_tree.md`. The briefing discard check references this anchor, and the single source of this header and filter format is here. The attempt PK value format is not newly defined but referenced → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS).
+- Header = `^\| # \| Branch point \| Direction \| Discard reason \| Date \| Retry condition \|$` (for identifying the table · its columns differ from the Recent Attempts table).
+- Filter key = the `Branch point` column (value = attempt PK, required even in a proposal-stage discard row whose `#` column is `—` · blank, `None` and `—` are violations). The briefing discard check narrows to only the rows with `Branch point ∈ check node set` (a set operation). Check node set → grep -F "anchor:check-execution" (NOTATION_CONVENTIONS)
+- What a person judges = the `Direction` column (prose) — whether a narrowed row and a new candidate are the same in natural language is judged by a person, not a machine (I-15 goes only as far as narrowing).
+- Valid example: the 6 header columns match + `| — | #4 | USDC retry | … |` (narrowed by branch point #4) · Violation examples: a `Branch point` cell that is blank, `None` or `—`.
+<!-- anchor-end:01-format-discarded-directions -->
+
+---
+
+## ④ File structure templates
+
+<!-- anchor:session-file-structure -->
+# Session Log: YYYY-MM-DD
+
+<!--
+File PK = the date of this file name = the day the cycles held here were *started*.
+- Cycles started on the same day pile up in this file as `## Round 1`, `## Round 2` …
+- When one cycle is continued the next day without a wrap, that work is also written in *this file* (the start date). No new round is made.
+-->
+
+## Round 1 · Attempt #N
+
+Cycle goal: —
+
+### PLAN
+Hypothesis:
+> —
+
+Success criteria (this cycle):
+- [ ] —
+
+Lessons consulted: —
+Discard check: —
+
+### DO
+
+### CHECK
+Success criteria met:
+- [ ] —
+
+Distance to destination: —
+
+What differed from expectation:
+- —
+
+Bottlenecks/barriers:
+- —
+
+### ACT
+Conclusion: —
+
+Reason:
+> —
+
+Next-cycle direction candidates:
+1. —
+
+New lessons: —
+<!-- anchor-end:session-file-structure -->
+
+<!-- anchor:session-file-writing -->
+**Session file writing rules** (`sessions/YYYY-MM-DD.md`)
+
+- Structure → grep -F "anchor:session-file-structure" (NOTATION_CONVENTIONS). Prefix = from the first line of the block to right before the `## Round 1` line (only the H1 date is substituted). Round skeleton = from the `## Round 1` line to the end of the block (only the header line is substituted).
+- From the second round of a file on, one `---` line is put before the skeleton.
+- A `—` in the skeleton is an unfilled slot. When a value is written, it replaces the `—`.
+- Round header · `Lessons consulted:` · `Discard check:` · `Conclusion:` format → grep -F "anchor:other-files-fk-table" (NOTATION_CONVENTIONS)
+- `Hypothesis:` = 1 or more sentences of the form `If ~, then ~. Because ~.`
+- `Success criteria (this cycle):` = 1 or more lines of `- [ ] {condition}`.
+- DO entry = a `#### {YYYY-MM-DD} {HH:MM} — {one-line summary}` header and the prose below it. It is added at the very end of the `### DO` section. `{YYYY-MM-DD}` = `Today` of the `route` output, `{HH:MM}` = `Now` of the `route` output.
+- A DO entry is written at two times. ① For every response that acted: before ending a response that wrote a file or ran a command, run `node .claude/hooks/nav.js route`, and when `OpenRoundCount` is 1 or more, write what that response did as 1 DO entry in the round of the first `OpenRound` line (when it is `0`, do not write). A response that runs a command (`/pdca-init` · `/pdca-start` · `/pdca-status` · `/pdca-wrap`) is not a target, and this `route` run and the DO entry write are not counted as actions. The DO record hook blocks a response that lacks this write from ending. DO record hook → grep -F "anchor:do-record-hook-rules" (NOTATION_CONVENTIONS) ② `/pdca-wrap`: among the actions of that session, those the `brief` output DO entry header list lacks are written after user approval.
+- Session-pause memo = a DO entry written at the end of the `### DO` section when only the session ends and the cycle is not closed. Header = `#### {YYYY-MM-DD} {HH:MM} — Session paused`, and the three lines directly below = `Did: {value}` · `Remaining: {value}` · `Next first action: {value}` (in this order, with no blank line). `{YYYY-MM-DD}` = `Today` of the `route` output, `{HH:MM}` = `Now` of the `route` output. Memo format test → grep -F "anchor:other-files-fk-table" (NOTATION_CONVENTIONS)
+- Open round count condition → grep -F "anchor:invariant-table-T1" (NOTATION_CONVENTIONS)
+- CHECK `Success criteria met:` = one line per PLAN condition. Met = `- [x] {condition}: O — {reason}`, not met = `- [ ] {condition}: X — {reason}`. These lines are the computation input of `Result` and the status.
+- `Distance to destination:` = one distance word + ` — {reason}`. Distance vocabulary → grep -F "anchor:enum-column-vocab" (NOTATION_CONVENTIONS)
+- `New lessons:` = `None` or an ascending list of `#K###`.
+<!-- anchor-end:session-file-writing -->
+
+<!-- anchor:00-file-structure -->
+# Destination
+
+> This file is written and edited by `/pdca-init`. It is not edited by hand. Destination writing rules → grep -F "anchor:00-writing-rules" (NOTATION_CONVENTIONS)
+> When the destination wavers, the whole exploration wavers.
+> ⚠️ **No compression**: success criteria (D#) rows are not deleted. For a discarded criterion, only its `In effect`
+>   is changed to `Discarded` and the row stays (the invalidation pattern). Deleting it makes a D# cited by a past ◎ Best Record
+>   vanish, and the basis of the closeness judgment is lost.
+> This file has no frontmatter.
+
+---
+
+## Final Goal
+{Final goal in one sentence}
+
+---
+
+## Success Criteria
+
+> **D#** = the destination criterion PK. References use only this number (the number is kept even when discarded). D# format → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS)
+> `In effect:` is put on the line **directly below** each D#. In-effect value format → grep -F "anchor:composite-in-effect" (NOTATION_CONVENTIONS)
+> **Checkbox `[ ]`/`[x]`** = whether that criterion is **met right now**. `/pdca-wrap` turns it on and off, with user approval.
+> The `[x]` of this list and the `Why closest` (D# met) of the ◎ Best Record are **different axes**. No agreement check is done between the two.
+
+### Quantitative criteria (measurable numbers)
+- [ ] **D1** — {quantitative criterion}
+      In effect: Valid
+
+### Qualitative criteria (judgment)
+- [ ] **D2** — {qualitative criterion}
+      In effect: Valid
+
+---
+
+## Constraints (must be kept)
+- {constraint}
+
+---
+
+## Not the Destination (out of scope)
+- {out-of-scope item}
+
+---
+
+## Destination Change History
+
+> Change history `Date` format → grep -F "anchor:date-literal-full-list" (NOTATION_CONVENTIONS)
+> Row order and template row → grep -F "anchor:notation-grammar" (NOTATION_CONVENTIONS)
+
+| Date | Change | Reason for change |
+|------|-----------|-----------|
+| — | — | — |
+<!-- anchor-end:00-file-structure -->
+
+<!-- anchor:00-writing-rules -->
+**`00_destination.md` writing and editing rules**
+
+- Who writes: body = `/pdca-init`, checkbox `[ ]`/`[x]` = `/pdca-wrap`. No other command writes this file.
+- Structure = the structure template. Destination structure template → grep -F "anchor:00-file-structure" (NOTATION_CONVENTIONS)
+- Fixed line regex: `^(#|>|---$|\| Date \||\|-)` — a line this regex catches is a fixed line (titles, guidance lines, dividers, the two table header lines). The list of the fixed lines of the file gathered from the top must equal the fixed line list of the structure template character for character (trailing spaces are not compared). Fixed lines are not erased, edited or added.
+- Item line regex (exact match): `^- \[( |x)\] \*\*({Destination criterion PK})\*\* — (.+)$` ({Destination criterion PK} → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS))
+- Placeholder line = a line of the structure template that is not a fixed line and contains `{`. If the file has even one line equal to a placeholder line, it is a violation.
+- Value line = a line that is neither a fixed line nor a blank line. No value line is put above the first `## ` line. Value line condition per section:
+
+| Section | Value line condition |
+|---|---|
+| `## Final Goal` | Exactly 1 line. One sentence that states the goal with a verb (e.g. `Build a 3D map of the factory as a digital twin in Isaac Sim and have the robot perform autonomous path finding`) |
+| `## Success Criteria` | Only pairs of an item line placed below a `### ` line and the `In effect:` line directly below it. 1 or more pairs. Quantitative criterion = a criterion with a number and a way to measure it, qualitative criterion = a criterion a person judges by looking at the state |
+| `## Constraints (must be kept)` | All start with `- `, and 1 or more lines. `- None` when checked and not applicable |
+| `## Not the Destination (out of scope)` | All start with `- `, and 1 or more lines. `- None` when checked and not applicable |
+| `## Destination Change History` | Table rows only. 1 or more data rows, and the `Change` and `Reason for change` cells are neither blank nor `—` |
+
+- `{today}` = the `Today:` value of the `node .claude/hooks/nav.js dest` output.
+- Numbers: the number of a new criterion = the `NextCriterionNumber` value of the `dest` output (the greatest existing number + 1 · discarded criteria included). Existing numbers are not changed or reused. Item line format and number condition → grep -F "anchor:other-files-fk-table" (NOTATION_CONVENTIONS)
+- Initial writing: the distribution has no `00_destination.md`. When the `dest` output is `DestinationFile: None`, create the file with `node .claude/hooks/nav.js dest --create` (the structure template is not copied by hand). Replace the placeholder lines of that file with value lines as in the table below and do not touch the other lines. Replace the template row of the change history with `| {today} | Initial version | None |`.
+
+| Placeholder line | Number of approved values | How to write |
+|---|---|---|
+| `{Final goal in one sentence}` | 1 | Replace that line with the value line |
+| The placeholder item line of each of the `### Quantitative criteria` section and the `### Qualitative criteria` section | 1 or more | In the place of the placeholder item line and the `In effect:` line directly below, write for each value a pair of a `- [ ] **D{number}** — {criterion}` line and a `      In effect: Valid` line, in the approved order |
+| The placeholder item line of each of the `### Quantitative criteria` section and the `### Qualitative criteria` section | 0 | Erase the placeholder item line and the `In effect:` line directly below. Keep the `### ` line |
+| Each of the `- {constraint}` line and the `- {out-of-scope item}` line | 1 or more | In the place of that line, write a `- {value}` line for each value, in the approved order |
+| Each of the `- {constraint}` line and the `- {out-of-scope item}` line | 0 | Replace that line with `- None` |
+
+- Numbers at initial writing: the first item of the quantitative section is `D1`, growing by 1 from top to bottom, and the first item of the qualitative section continues with the next number. The numbers written on the placeholder lines are not used. A destination with 0 quantitative and qualitative criteria in total is not written.
+- An edit is one of the six below, and nothing else. For each edit, add a `| {today} | {Change} | {Reason for change} |` row at the very bottom of the change history.
+
+| Edit | How to write | `Change` cell |
+|---|---|---|
+| Change the final goal | Replace the value line of `## Final Goal` with the new sentence | `Final Goal changed` |
+| Add a criterion | At the very bottom of the section the user picked, quantitative or qualitative, add a `- [ ] **D{new number}** — {criterion}` line and an `In effect: Valid` line | `D{new number} added` |
+| Discard a criterion | Change only the `In effect:` line of that criterion to `Discarded — {today}, {reason}`. Leave the item line as it is | `D{number} discarded` |
+| Change the wording of a recorded criterion | Done as discard a criterion + add a criterion. The wording of the item line is not edited (the same goes for typo fixes) | `D{number} discarded, D{new number} added` |
+| Change the wording of an unrecorded criterion | Change only the wording after ` — ` of that item line | `D{number} wording changed` |
+| Change constraints or out-of-scope | Add, erase or change a `- ` line of that section | `Constraints changed` or `Out-of-scope changed` |
+
+- Recorded criterion = a criterion with `Recorded` on its `Criterion:` line of the `dest` output (its number is in a full text of `00_destination.md` in `history/`). A criterion with `Unrecorded` is not yet in any history entry.
+- Wording fixed condition → grep -F "anchor:invariant-table-T2" (NOTATION_CONVENTIONS)
+<!-- anchor-end:00-writing-rules -->
+
+<!-- anchor:k-file-structure -->
+# K001 — {title · the name this lesson is called by}
+
+> This file is the **body**. `Summary` and `Applies when` have the `02_knowledge_base.md` index as their
+> single source, so they are not written again here. The title is kept only in the H1 on top.
+> ⚠️ **No compression**: this whole file is a no-compression target.
+> It is not migrated to an archive, and it is not deleted even when it becomes invalid.
+> 📌 File name and lesson PK format → grep -F "anchor:pk-definition-table" (NOTATION_CONVENTIONS)
+>    This file has no frontmatter.
+
+```
+Discovered: #N (YYYY-MM-DD)
+Related attempts: #N
+Invalidation:    None
+```
+
+> `Discovered`·`Related attempts` format → grep -F "anchor:other-files-fk-table" (NOTATION_CONVENTIONS)
+>   `Related attempts` **must agree both ways** with the `Lesson` column of `01_exploration_tree.md` — editing only one side is a violation. `/pdca-wrap` is the only writer.
+> `Invalidation` value format → grep -F "anchor:composite-invalidation" (NOTATION_CONVENTIONS)
+>   At that time `Validity` of the `02_knowledge_base.md` index is also changed to `Invalid`. The two always move together.
+## Content
+
+{Write down to what was done and what came of it.}
+{With only the conclusion written, it cannot be reproduced next time. Leave concrete values, versions, commands and paths.}
+{An abstract lesson cannot be taken out and used, so it is the same as not having it.}
+
+## Cautions / Limits
+
+{Cases where this knowledge does not hold, hidden premises, exceptions.}
+{When this is empty the lesson looks universal and gets applied at the wrong point.}
+{When checking finds no limits, write `None`. Do not leave it empty.}
+
+## Revision History
+
+> **Invalid** (the premise died) and **revised** (the content was wrong) are different.
+> When it is fixed and still usable, the index `Validity` stays `Valid` and the change is left only here.
+> Do not erase the original description; write what changed and how.
+
+| Date | What was fixed | Why |
+|---|---|---|
+| — | — | — |
+<!-- anchor-end:k-file-structure -->
+
+<!-- anchor:archive-file-structure -->
+---
+period: YYYY-MM
+attempts: []            # Attempt numbers held in this file. Ascending. e.g. [4, 7, 9] (without `#` — the YAML comment character)
+backtracks: 0           # Number of Return Log entries held in this file
+last_updated: YYYY-MM-DD
+---
+
+# Exploration Archive — YYYY-MM
+
+> ⛔ **`/pdca-start` does not read this file.**
+> To check a row of this file, point nav-scout at this file path and the attempt number to find. The full text of the file is not loaded into the main session.
+
+> This file keeps the rows **pushed out by the count caps** of `01_exploration_tree.md`.
+> ⚠️ **Migration is a move, not a summary.** Rows are moved character for character. No deleting, compressing or rewriting.
+> This file has no line count cap. It keeps accumulating.
+
+> The two numbers of the frontmatter on top are **values counting only the rows this file holds**. They are verified by reading this file alone.
+> They are not cumulative statistics of the whole tree. Cumulative statistics fields that cannot be verified were removed from the tree.
+
+## Migration Rules
+
+| Target | When it migrates | Which month file it goes to |
+|---|---|---|
+| Recent Attempts | From the 4th on | `YYYY-MM` of the `Body` path |
+| Return Log | From the 4th on | `YYYY-MM` of the `Body` path |
+
+- **The decision looks only at the path of the `Body` column.** `sessions/2026-03-15.md` → `archive/tree_2026-03.md`.
+  It goes by the time of occurrence, not the time of migration (the day of the work).
+- **Even when one attempt spans several sessions, `Body` stays fixed to the session where the attempt started.** The continuing sessions
+  are linked inside each session file by `Attempt #N continued`, and the `Body` column of the tree is not updated.
+  So the migration decision also goes **by the starting session**, and the `Body` value is not rewritten on migration.
+- When the month file does not exist, make it; when it exists, **append** at the very bottom of the table. Existing rows are not edited.
+- One `/pdca-wrap` may write into two or more month files. This is normal behavior.
+- Reverting: when an attempt whose row is only in this file is resumed and closed again, `/pdca-wrap` erases that row from this file and writes it at the very bottom of Recent Attempts of `01_exploration_tree.md` (removing that number from `attempts` and setting `last_updated` to today). One attempt has 1 row across the tree and the archives.
+- After migrating, update `archived_through` of `01_exploration_tree.md` to the **most recent `YYYY-MM` among the migrated rows**.
+
+**What is not migrated** — the following stay in the tree permanently:
+- Discarded Directions (unlimited. Preventing retries is the core function, so they must not leave the tree)
+- ◎ Best Record (the backtracking reference point)
+- ★ Current Position
+
+## Migrated Attempt Summaries
+
+| # | Branch point | Direction | Result | Conclusion | Lesson | Body |
+|---|---|---|---|---|---|---|
+| — | — | — | — | — | — | — |
+
+> Result and conclusion vocabulary → grep -F "anchor:enum-column-vocab" (NOTATION_CONVENTIONS)
+> `Branch point` is **moved as it was** in the tree. It is not recomputed or deleted on migration.
+> The attempt a migrated row's `Branch point` points to may be inside this file or in another month file.
+> Even so `/pdca-start` does not read this file — because inside the tree **the living lineage is covered by the ★ `Path:` line,
+> and dead branches by the `Discarded Directions` table, which is not migrated**.
+
+## Migrated Return Log
+
+| Blocked at | Return point | Why that point | Invalidated lessons | Body |
+|---|---|---|---|---|
+| — | — | — | — | — |
+
+> ⚠️ The `Why that point` column is **never to be compressed**.
+> `Invalidated lessons` is not left empty. When checked and not applicable, write `None`. (`—` means "not filled yet", so it is a violation)
+
+## Not in This File
+
+| What you look for | Where it is |
+|---|---|
+| Full run text of an attempt (PLAN/DO/CHECK/ACT) | `sessions/YYYY-MM-DD.md` ← the `Body` column of the tables in this file |
+| Lesson body | `knowledge/K###.md` |
+| Current position / best record / discard list | `01_exploration_tree.md` |
+| The living lineage (path) | the ★ `Path:` line of `01_exploration_tree.md` |
+
+> This file is an **index**. The run process is not copied in here.
+> Duplicating `sessions/` reproduces as is the problem that bloated the tree in v1.
+<!-- anchor-end:archive-file-structure -->
+
+---
+
+## ⑤ Pointers
+
+<!-- anchor:anchor-pointer-grammar -->
+**Anchors and pointers**
+
+- Anchor: open `<!-- anchor:{key} -->`, close `<!-- anchor-end:{key} -->`. Each is a whole line. A key is `[A-Za-z0-9._-]+`. Each key has open and close once each, with the open first. Block = between the open and the close (boundary lines excluded).
+- Pointer: `{target label} → grep -F "anchor:{key}" ({file name})`. {file name} is `NOTATION_CONVENTIONS`. Exactly one pointer corresponds to the same label.
+- When pointing to a rule in another place, only this pointer form is used. Do not point by a prose title or a clause number.
+- The rule content of that block is not written again beside the pointer.
+<!-- anchor-end:anchor-pointer-grammar -->
+
+<!-- anchor:execution-delegation -->
+**Pointer resolution**
+
+- A command that meets a pointer runs `node .claude/hooks/nav.js anchor {key}` and receives the original text of the block.
+- It is not resolved in any other way (reading this whole file, searching for a title).
+- When the command prints `[nav.js error]`, stop and show that line to the user.
+- Pointer grammar → grep -F "anchor:anchor-pointer-grammar" (NOTATION_CONVENTIONS)
+<!-- anchor-end:execution-delegation -->
